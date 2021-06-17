@@ -1,0 +1,22 @@
+#ifndef PTP_VTK_H
+#define PTP_VTK_H
+
+#include"myicp_vtk.h"
+//类的默认继承方式是保护继承:基类的公有和保护继承为保护，只能由派生类和友元函数访问；私有类继承为私有，不可见
+
+class PTPlaneICP :public  MyICP     //继承传统配准方法
+{
+public:
+    PTPlaneICP()
+    {
+    }
+    void transform_es_svd_weight();                                     //重写矩阵估计函数
+    void setNormals(vtkSmartPointer<vtkPolyData> STLCloud); //设置法向量
+    vtkSmartPointer<vtkPolyData> target_normals;           //同时包含数据点和对应的法向量
+protected://
+
+};
+void estimateRigidTransformation_ptp(const vtkSmartPointer<vtkPoints> source,const vtkSmartPointer<vtkPolyData> target,std::vector<float>::iterator weights_it,Eigen::Matrix4f& transformation_matrix);
+
+
+#endif // PTP_VTK_H
