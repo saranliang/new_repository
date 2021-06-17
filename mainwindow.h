@@ -1,6 +1,7 @@
 #ifndef MAINWINDOW_H
 #define MAINWINDOW_H
 #include <QtWidgets/QMainWindow>
+#include<QThread>
 
 #include <vtkAutoInit.h>
 #include <vtkActor.h>
@@ -17,7 +18,6 @@
 #include <vtkRendererCollection.h>
 #include <vtkSphereSource.h>
 #include <vtkNamedColors.h>
-
 #include"start.h"
 //这个只能控制鼠标的动作
 class MyInteractorStyle : public vtkInteractorStyleTrackballCamera
@@ -108,7 +108,20 @@ class vtkEventQtSlotConnect;
 namespace Ui {
 class MainWindow;
 }
-
+class MainWindow;
+class OpenSourceThread : public QThread
+{
+    Q_OBJECT
+public:
+    explicit OpenSourceThread(QObject *parent = 0);
+ protected:
+    //不能直接调用
+    void run();
+    MainWindow* tt;
+signals:
+    void isDone();   //注册线程任务完成的信号
+public slots:
+};
 class MainWindow : public QMainWindow
 {
     Q_OBJECT
@@ -118,7 +131,7 @@ public:
     ~MainWindow();
 public slots:
     void slot_clicked(vtkObject*, unsigned long, void*, void*);
-
+    friend void* pthrd_func(void* arg);    //将线程的回调函数设置为界面的友元函数，从而可以访问该类的非公有变量
 private slots:
     void on_open_source_clicked();
 
@@ -151,4 +164,5 @@ private:
     vtkSmartPointer<vtkNamedColors> winBackColor;
     vtkSmartPointer<MyInteractorStyle> style;
 };
+
 #endif // MAINWINDOW_H

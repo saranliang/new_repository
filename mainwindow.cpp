@@ -15,7 +15,7 @@
 #include <vtkDecimatePro.h>
 
 #include<unistd.h>   //线程相关的
-
+#include <pthread.h>
 #include"MathTool.h"
 
 //显示
@@ -58,7 +58,7 @@ MainWindow::MainWindow(QWidget *parent) :
     Tough=0;
     Fine=0;
 
-    FILENAME = "/home/saran/Code/QT/all_edition/0604Rule/source/";
+    FILENAME = "/home/saran/Code/QT/06016Pthread/source/";
     //窗口控件初始化,设定参数不可写
     ui->deviation_set_tough->setReadOnly(true);
     ui->deviation_set_fine->setReadOnly(true);
@@ -273,40 +273,24 @@ void MyInteractorStyle::ReallyDeletePoint(vtkSmartPointer<vtkPoints> points, vtk
 }
 
 //打开pcd模拟旋转文件
+//尝试开辟线程，让其在后台读取文件：主线程更改界面，子线程做运算。
+void* pthrd_func(void* arg)
+{
+
+}
 void MainWindow::on_open_source_clicked()
 {
     QString fileName;
-    //fileName = QFileDialog::getOpenFileName(this,tr("Open File"),tr(""),tr("Text File (*.txt)"));   //只显示指定后缀的文件
-    //fileName = QFileDialog::getOpenFileName(this,"open",FILENAME.data());                                      //打开所有文件
-
      fileName = QFileDialog::getOpenFileName(this,"open","/home/saran/Data/测试用例/北大一院");                                      //打开所有文件
     std::string file_name = fileName.toStdString();
-    std::cout<<file_name<<std::endl;
+    std::cout<<"文件路径:"<<file_name<<std::endl;
 
     //source
-    //std::string inputFilename = "/home/saran/Data/测试用例/北大一院/02029/hip_left.stl";
     vtkSmartPointer<vtkSTLReader> reader = vtkSmartPointer<vtkSTLReader>::New();
     reader->SetFileName(file_name.c_str());
     reader->Update();
     vtkSmartPointer<vtkPolyData> stlData = reader->GetOutput();
 
-
-    //filter
-//    double  d  = 0.5;
-//    vtkSmartPointer<vtkDecimatePro> decimate =
-//            vtkSmartPointer<vtkDecimatePro>::New();
-//    decimate->SetInputData(stlData);
-//    decimate->PreserveTopologyOff();
-//    decimate->SplittingOn();
-//    decimate->BoundaryVertexDeletionOn();
-//    decimate->SetTargetReduction(d);
-
-//    decimate->Update();
-
-//    vtkSmartPointer<vtkPolyData> decimated =
-//            vtkSmartPointer<vtkPolyData>::New();
-//    decimated->ShallowCopy(decimate->GetOutput());   //浅拷贝，公用同一份数据
-//    stlData = decimated;                             //将指针指向新降采样后的点
 
    //mapper
      vtkSmartPointer<vtkPolyDataMapper> mapper = vtkSmartPointer<vtkPolyDataMapper>::New();
@@ -316,11 +300,11 @@ void MainWindow::on_open_source_clicked()
    //actor
      vtkSmartPointer<vtkActor> actor = vtkSmartPointer<vtkActor>::New();
      actor->SetMapper(mapper);
-     std::cout<<"点大小:"<<actor->GetProperty()->GetPointSize()<<std::endl;
+
    //render
      vtkSmartPointer<vtkRenderer> renderer = vtkSmartPointer<vtkRenderer>::New();
       renderer->AddActor(actor);
-      renderer->SetBackground( winBackColor->GetColor3d( "DeepSkyBlue" ).GetData() );
+      renderer->SetBackground(winBackColor->GetColor3d( "DeepSkyBlue" ).GetData() );
    //renderwindow
      vtkSmartPointer<vtkRenderWindow> renderWindow = vtkSmartPointer<vtkRenderWindow>::New();
      renderWindow->AddRenderer(renderer);
@@ -340,11 +324,21 @@ void MainWindow::on_open_source_clicked()
 
 
      //存储数据,注意时浅拷贝，仅仅是指针指向新的points
+     std::cout<<stlData->GetNumberOfPoints()<<"个点"<<std::endl;
      cloud_target  = stlData->GetPoints();
      tree_target->BuildLocatorFromPoints(cloud_target);
      stl_target = stlData;
      file_name.erase(file_name.begin()+file_name.find("hip_left.stl"), file_name.end());
      OPENROUTE = file_name;
+
+
+    //在Linux线程下读取文件
+//    pthread_t id;
+//    int ret;
+//    ret = pthread_create(&id,NULL,pthrd_func,(void*)this);
+//    pthread_detach(id);
+//    //在Qthread线程下
+
 }
 
 //读取之前记录的参考点   ReadMap()
@@ -592,4 +586,15 @@ void MainWindow::on_delete_point_clicked()
       ui->CloudViewer->GetRenderWindow()->Render();
       SelectPoints[set_index].erase(SelectPoints[set_index].begin()+set_inside_index); //删除在vector中的该点
       cloud_choosed->DeepCopy(new_cloud_choosed);    //指针指向删除后的点集,注意指针直接赋值的后果！！！
+}
+
+
+OpenSourceThread::OpenSourceThread(QObject *parent) : QThread(parent)
+{
+    tt = (MainWindow*)parent;
+}
+void OpenSourceThread::run()
+{
+   pthrd_func(tt);
+   emit isDone();    //发出线程结束信号
 }

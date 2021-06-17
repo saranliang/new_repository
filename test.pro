@@ -30,7 +30,6 @@ QMAKE_CFLAGS += -fopenmp
 LIBS += -lgomp -lpthread
 
 SOURCES += \
-        SimulatedAnnualingSolver.cpp \
         dspr_vtk.cpp \
         icp_base.cpp \
         main.cpp \
@@ -43,10 +42,8 @@ SOURCES += \
         start.cpp
 
 HEADERS += \
-        ExternalPoleLine.h \
         MathTool.h \
         Robost.h \
-        SimulatedAnnualingSolver.h \
         dqkficp.h \
         dspr_vtk.h \
         dualquat_base.h \
@@ -54,6 +51,7 @@ HEADERS += \
         icp_base.h \
         mainwindow.h \
         myicp_vtk.h \
+        mythread.h \
         pso.h \
         ptp_vtk.h \
         start.h \

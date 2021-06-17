@@ -38,7 +38,6 @@ VTK_MODULE_INIT(vtkInteractionStyle);
 #include"ptp_vtk.h"
 #include"dspr_vtk.h"
 #include"dqkficp.h"
-#include"ExternalPoleLine.h"
 #include"pso.h"
 #include"fitplane.h"
 
@@ -69,20 +68,6 @@ void* WindowShow(void* args)
     RW->Render();
     RWInteractor->Start();
 }
-
-//struct callback_args
-//{
-//   vtkSmartPointer<vtkRenderWindow> RW;
-//   vtkSmartPointer<vtkRenderWindowInteractor> RWInteractor;
-//};
-
-//static callback_args cb_args;
-//void* WindowShow(void* args)
-//{
-//    struct callback_args * data = static_cast<struct callback_args *>(args);
-//    data->RW->Render();
-//    data->RWInteractor->Start();
-//}
 
 int IsNext;   //表示是否接着进行精配准
 bool IsClose;  //标识当前次测试是否结束
@@ -384,24 +369,6 @@ void  RegistrationSatrt::RegistrationImplement(std::string RegistrationOrder)
             OptError = icp->getFitnessScore(); //计算对应点对之间的距离，这个这个要求set的Source和target的点云指针不能有更改，否则计算就不正确了
             std::cout<<"最终的误差为："<<OptError<<std::endl;    //经过PTP之后有可能误差反而变大
         }
-        if(ModeTrans=="SAICP")
-        {
-            int seed = (unsigned)time(NULL);                                       //调用模拟退火优化
-            SAICP icp(seed);
-
-            icp.setEuclideanFitnessEpsilon(0.00001);
-            icp.setMaximumIterations(50);
-            icp.setRangeofAngle(40.0);              //在直接使用随机震荡时，使震荡范围较大，（正负180的概率为95.6%）
-            icp.setInputSource(cloud_index);
-            icp.setInputTarget(cloud_model);
-            icp.setCenterMatrix(FossaCenter);
-            icp.align(Finall,ToughMatrix);
-
-            //icp.Analysis();  //输出每个点的误差
-
-            OptMatrix = icp.getFinalTransformation();
-            OptError = icp.getFitnessScore(); //计算对应点对之间的距离，这个这个要求set的Source和target的点云指针不能有更改，否则计算就不正确了
-        }
         if(ModeTrans=="PSO")
         {
             PSOICP icp(3,8);
@@ -416,98 +383,6 @@ void  RegistrationSatrt::RegistrationImplement(std::string RegistrationOrder)
 
             OptMatrix = icp.getFinalTransformation();
             OptError = icp.getFitnessScore(); //计算对应点对之间的距离，这个这个要求set的Source和target的点云指针不能有更改，否则计算就不正确了
-        }
-        //其实就是截断鲁棒+随机震荡
-        if(ModeTrans =="Combin")
-        {
-
-            std::vector<int> all_nums = {0,1,2,3,4,5};   //所有选点轮数的序号保存在向量中,从0-5
-           int remove_num_flag = 0;                          //存储最优的点簇方案中被删除的轮序号
-           //1、找到误差最大的一轮点，跳过它
-              //删除一轮选点
-           for (int remove_num = 0;remove_num < all_nums.size();remove_num++)
-           {
-               std::cout << "组合号" << remove_num << std::endl;
-               std::vector<int> choose_segement = all_nums;
-               choose_segement.erase(choose_segement.begin() + remove_num);  //删除被选中的点轮
-              vtkSmartPointer<vtkPoints> cloud_omp = vtkSmartPointer<vtkPoints>::New();
-               for (int seg_order = 0;seg_order < choose_segement.size();seg_order++)   //按顺序加入点簇
-               {
-                   //读取读取指定选点轮的点，跳过被删除的轮
-                   for (int temp_start=1; temp_start < SelectPoints.size(); temp_start++)
-                   {
-                       std::vector<reference>::iterator it = SelectPoints.at(temp_start).begin()+choose_segement[seg_order];
-                       cloud_omp->InsertNextPoint(it->point);      //累计记录所选点簇
-                   }
-               }
-               MyICP icp;
-               //FourICP icp;
-               //TP_ICP icp;
-               icp.setEuclideanFitnessEpsilon(0.001);    //误差限，若超过该限制，则视为不收敛
-               icp.setMaximumIterations(50);          //最大迭代次数，默认为100，这里设为300时收敛结果也一样
-               icp.setInputSource(cloud_omp);        //source经过变换到target,探针获取的特征点
-               icp.setInputTarget(cloud_model);        //target不变，CT模型
-               icp.align(Finall, ToughMatrix); //执行配准变换后的源点云到Final,transform_2.matrix()为guess矩阵，即粗配准矩阵==(先应用粗配准)
-               if (opt_error > icp.getFitnessScore())
-               {
-                   opt_error = icp.getFitnessScore();
-                   remove_num_flag = remove_num;
-               }
-           }
-           std::vector<int> nums = all_nums;
-           /*remove_num_flag = 2;*/
-           nums.erase(nums.begin() + remove_num_flag);
-
-           //2、找到剩余点轮加入的最佳顺序
-           Permutation* set_permutation = new Permutation;
-           std::vector<std::vector<int>> set_order = set_permutation->permute(nums);  //生成点簇加入顺序的所有排列方式
-           std::vector<int> opt_order;
-           std::map<float, int> error_order;
-           std::map<int,Eigen::Matrix4f> order_matrix;
-            //多线程并行编程，需要保证不会对于共享的量进行写，可以进行读（可以使用map存储，因为每次存贮自动排序）
-            #pragma omp parallel for
-            for (int try_order = 0;try_order < set_order.size();try_order++)//尝试所有排列
-            {
-               //printf("---------------------%d\n", try_order);
-               std::vector<int> choose_segement = set_order[try_order];   //一种点簇的加入顺序，如{1,3,2,4}
-               float error;                                           //当前点簇下最后的误差
-
-               Eigen::Matrix4f FinalMatrix_Left =ToughMatrix;
-               vtkSmartPointer<vtkPoints> cloud_omp = vtkSmartPointer<vtkPoints>::New();
-               for (int seg_order = 0;seg_order < choose_segement.size();seg_order++)   //按顺序加入点轮，跳过了被删除的轮
-               {
-                   //
-                   for (int temp_start=1; temp_start < SelectPoints.size(); temp_start++)
-                   {
-                       std::vector<reference>::iterator it = SelectPoints.at(temp_start).begin()+choose_segement[seg_order];
-                       cloud_omp->InsertNextPoint(it->point);      //累计记录所选点簇
-                   }
-                   //左视图->原始ICP，更新点，从粗配准开始重新配准
-                   MyICP icp;
-                   icp.setEuclideanFitnessEpsilon(0.001);   //误差限，若超过该限制，则视为不收敛
-                   icp.setMaximumIterations(50);          //最大迭代次数，默认为100，这里设为300时收敛结果也一样
-                   icp.setInputSource(cloud_omp);   //source经过变换到target,这里指针赋值
-                   icp.setInputTarget(cloud_model);        //target不变
-                   icp.align(Finall, FinalMatrix_Left);
-
-                   error = icp.getFitnessScore();         //计算对应点对之间的距离，这个这个要求set的Source和target的点云指针不能有更改，否则计算就不正确了
-                   FinalMatrix_Left = icp.getFinalTransformation();
-               }
-
-               error_order[error] = try_order;
-               order_matrix[try_order] = FinalMatrix_Left;
-            }
-           //---------------------------------多线程的最佳顺序找的不对
-           std::cout << "最佳顺序为";
-           int finall_order = error_order.begin()->second;
-           for(int i=0;i<set_order[finall_order].size();i++)
-           {
-               std::cout<<set_order[finall_order][i]<<",";
-           }
-           std::cout<<std::endl;
-           OptError = error_order.begin()->first;
-           OptMatrix = order_matrix[error_order.begin()->second];
-            std::cout << "误差为"<<OptError<<std::endl;
         }
     }
 }
@@ -987,6 +862,8 @@ int RegistrationSatrt::start()
              vtkSmartPointer<vtkPoints> right_points =  vtkSmartPointer<vtkPoints>::New();
              vtkSmartPointer<vtkPolyData>  right_source= vtkSmartPointer<vtkPolyData>::New();
             //左边视图->
+            //尝试添加线程
+
             {
                 RegistrationImplement(RegistrationOrder_1); //根据配准指令执行对应的配准方法
                 iterations_cnt = ShowSave(); //更新点云_translated ,并分析取得iterations_cnt
